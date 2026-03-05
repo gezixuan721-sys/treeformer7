@@ -1,3 +1,4 @@
+# 原版 + seed，用于 SBA 版本训练（模型结构在 network/pvt_cls.py 中改）
 import os
 import time
 import torch
@@ -24,6 +25,7 @@ from losses.consistency_loss import *
 
 import random
 
+
 def seed_everything(seed=1234):
     random.seed(seed)
     np.random.seed(seed)
@@ -32,13 +34,14 @@ def seed_everything(seed=1234):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
-parser = argparse.ArgumentParser(description='Train (baseline + seed)')
+
+parser = argparse.ArgumentParser(description='Train (SBA version + seed)')
 parser.add_argument(
     '--data-dir',
-    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/Data',
+    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/gaofenerhao',
     help='data path'
 )
- 
+
 parser.add_argument('--dataset', default='TC')
 parser.add_argument('--lr', type=float, default=1e-5, help='the initial learning rate')
 parser.add_argument('--weight-decay', type=float, default=1e-4, help='the weight decay')
@@ -50,19 +53,21 @@ parser.add_argument('--batch-size', type=int, default=16, help='train batch size
 parser.add_argument('--batch-size-ul', type=int, default=16, help='train batch size')
 parser.add_argument('--device', default='0', help='assign device')
 parser.add_argument('--num-workers', type=int, default=0, help='the num of training process')
-parser.add_argument('--crop-size', type=int, default= 256, help='the crop size of the train image')
+parser.add_argument('--crop-size', type=int, default=256, help='the crop size of the train image')
 parser.add_argument('--rl', type=float, default=1, help='entropy regularization in sinkhorn')
 parser.add_argument('--reg', type=float, default=1, help='entropy regularization in sinkhorn')
 parser.add_argument('--ot', type=float, default=0.1, help='entropy regularization in sinkhorn')
 parser.add_argument('--tv', type=float, default=0.01, help='entropy regularization in sinkhorn')
 parser.add_argument('--num-of-iter-in-ot', type=int, default=100, help='sinkhorn iterations')
 parser.add_argument('--norm-cood', type=int, default=0, help='whether to norm cood when computing distance')
-parser.add_argument('--run-name', default='Treeformer_seed', help='run name for wandb interface/logging')
+parser.add_argument('--run-name', default='Treeformer_SBA', help='run name for wandb interface/logging')
 parser.add_argument('--consistency', type=int, default=1, help='whether to norm cood when computing distance')
 args = parser.parse_args()
 
 seed_everything(1234)
 
+
+# 下面与 train_seed.py 相同
 
 def train_collate(batch):
     transposed_batch = list(zip(*batch))
@@ -76,7 +81,7 @@ def train_collate(batch):
 def train_collate_UL(batch):
     transposed_batch = list(zip(*batch))
     images = torch.stack(transposed_batch[0], 0)
-    
+
     return images
 
 
@@ -93,8 +98,8 @@ class Trainer(object):
         args = self.args
         sub_dir = (
             "SEMI/{}_12-1-input-{}_reg-{}_nIter-{}_normCood-{}".format(
-                args.run_name,args.crop_size,args.reg,
-                args.num_of_iter_in_ot,args.norm_cood))
+                args.run_name, args.crop_size, args.reg,
+                args.num_of_iter_in_ot, args.norm_cood))
 
         root_ckpt = '/media/hznu-303/sdc/gzt/my_project/TreeFormer/TreeFormer-main/ckpts'
         self.save_dir = os.path.join(root_ckpt, sub_dir)
@@ -104,7 +109,7 @@ class Trainer(object):
         time_str = datetime.strftime(datetime.now(), "%m%d-%H%M%S")
         self.logger = log_utils.get_logger(
             os.path.join(self.save_dir, "train-{:s}.log".format(time_str)))
-            
+
         log_utils.print_config(vars(args), self.logger)
 
         if torch.cuda.is_available():
@@ -113,42 +118,43 @@ class Trainer(object):
             self.logger.info("using {} gpus".format(self.device_count))
         else:
             raise Exception("gpu is not available")
-        
-        
+
         downsample_ratio = 4
         self.datasets = {"train": Crowd_TC(os.path.join(args.data_dir, "train_data"), args.crop_size,
-                downsample_ratio, "train"), "val": Crowd_TC(os.path.join(args.data_dir, "valid_data"),
-                args.crop_size, downsample_ratio, "val")}
-        
-        self.datasets_ul = { "train_ul": Crowd_UL_TC(os.path.join(args.data_dir, "train_data_ul"), 
-                args.crop_size, downsample_ratio, "train_ul")}
+                                           downsample_ratio, "train"),
+                         "val": Crowd_TC(os.path.join(args.data_dir, "valid_data"),
+                                         args.crop_size, downsample_ratio, "val")}
 
-                
+        self.datasets_ul = {"train_ul": Crowd_UL_TC(os.path.join(args.data_dir, "train_data_ul"),
+                                                    args.crop_size, downsample_ratio, "train_ul")}
+
         self.dataloaders = {
             x: DataLoader(self.datasets[x],
-                collate_fn=(train_collate if x == "train" else default_collate),
-                batch_size=(args.batch_size if x == "train" else 1),
-                shuffle=(True if x == "train" else False),
-                num_workers=args.num_workers * self.device_count,
-                pin_memory=(True if x == "train" else False))
+                          collate_fn=(train_collate if x == "train" else default_collate),
+                          batch_size=(args.batch_size if x == "train" else 1),
+                          shuffle=(True if x == "train" else False),
+                          num_workers=args.num_workers * self.device_count,
+                          pin_memory=(True if x == "train" else False))
             for x in ["train", "val"]}
-        
+
         self.dataloaders_ul = {
             x: DataLoader(self.datasets_ul[x],
-                collate_fn=(train_collate_UL ),
-                batch_size=(args.batch_size_ul),
-                shuffle=(True),
-                num_workers=args.num_workers * self.device_count,
-                pin_memory=(True if x == "train" else False))
+                          collate_fn=(train_collate_UL),
+                          batch_size=(args.batch_size_ul),
+                          shuffle=(True),
+                          num_workers=args.num_workers * self.device_count,
+                          pin_memory=(True if x == "train" else False))
             for x in ["train_ul"]}
-                 
 
-        self.model = TCN.pvt_treeformer(pretrained=False)
-        
+        self.model = TCN.pvt_treeformer(pretrained=False,
+                                        use_adapter=False,
+                                        use_sba=True,
+                                        use_mfm=False)
+
         self.model.to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
         self.start_epoch = 0
-        
+
         if args.resume:
             self.logger.info("loading pretrained model from " + args.resume)
             suf = args.resume.rsplit(".", 1)[-1]
@@ -163,10 +169,10 @@ class Trainer(object):
                     torch.load(args.resume, self.device))
         else:
             self.logger.info("random initialization")
-            
-        self.ot_loss = OT_Loss(args.crop_size, downsample_ratio, args.norm_cood, 
-              self.device, args.num_of_iter_in_ot, args.reg)
-              
+
+        self.ot_loss = OT_Loss(args.crop_size, downsample_ratio, args.norm_cood,
+                               self.device, args.num_of_iter_in_ot, args.reg)
+
         self.tvloss = nn.L1Loss(reduction="none").to(self.device)
         self.mse = nn.MSELoss().to(self.device)
         self.mae = nn.L1Loss().to(self.device)
@@ -176,8 +182,7 @@ class Trainer(object):
         self.rankloss = RankLoss().to(self.device)
         self.kl_distance = nn.KLDivLoss(reduction='none')
         self.multiconloss = MultiConLoss().to(self.device)
-        
-    
+
     def train(self):
         """training process"""
         args = self.args
@@ -202,98 +207,101 @@ class Trainer(object):
         epoch_start = time.time()
         epoch_rank_loss = AverageMeter()
         epoch_consistensy_loss = AverageMeter()
-        
+
         self.model.train()  # Set model to training mode
+
+        unlabel_iter = iter(self.dataloaders_ul["train_ul"])
 
         for step, (inputs, gausss, points, gt_discrete) in enumerate(self.dataloaders["train"]):
             inputs = inputs.to(self.device)
             gausss = gausss.to(self.device)
             gd_count = np.array([len(p) for p in points], dtype=np.float32)
-            
+
             points = [p.to(self.device) for p in points]
             gt_discrete = gt_discrete.to(self.device)
             N = inputs.size(0)
-             
-            for st, unlabel_data in enumerate(self.dataloaders_ul["train_ul"]):
-                inputs_ul = unlabel_data.to(self.device)
-                break
-                
-                
+
+            try:
+                inputs_ul = next(unlabel_iter).to(self.device)
+            except StopIteration:
+                unlabel_iter = iter(self.dataloaders_ul["train_ul"])
+                inputs_ul = next(unlabel_iter).to(self.device)
+
             with torch.set_grad_enabled(True):
                 outputs_L, outputs_UL, outputs_normed, CLS_L, CLS_UL = self.model(inputs, inputs_ul)
                 outputs_L = outputs_L[0]
-                
+
                 with torch.set_grad_enabled(False):
-                    preds_UL = (outputs_UL[0][0] + outputs_UL[1][0] + outputs_UL[2][0])/3
-       
+                    pass  # preds_UL removed as it is dead code
+
                 # Compute counting loss.
-                count_loss = self.mae(outputs_L.sum(1).sum(1).sum(1),torch.from_numpy(gd_count).float().to(self.device))*self.args.reg
-                
+                count_loss = self.mae(outputs_L.sum(1).sum(1).sum(1),
+                                      torch.from_numpy(gd_count).float().to(self.device)) * self.args.reg
+
                 # Compute OT loss.
                 ot_loss, wd, ot_obj_value = self.ot_loss(outputs_normed, outputs_L, points)
-                ot_loss = ot_loss* self.args.ot
-                ot_obj_value = ot_obj_value* self.args.ot
-                
-                gd_count_tensor = (torch.from_numpy(gd_count).float().to(self.device).unsqueeze(1).unsqueeze(2).unsqueeze(3))
+                ot_loss = ot_loss * self.args.ot
+                ot_obj_value = ot_obj_value * self.args.ot
+
+                gd_count_tensor = (
+                    torch.from_numpy(gd_count).float().to(self.device).unsqueeze(1).unsqueeze(2).unsqueeze(3))
                 gt_discrete_normed = gt_discrete / (gd_count_tensor + 1e-6)
-                tv_loss = (self.tvloss(outputs_normed, gt_discrete_normed).sum(1).sum(1).sum(1)* 
-                    torch.from_numpy(gd_count).float().to(self.device)).mean(0) * self.args.tv
-            
+                tv_loss = (self.tvloss(outputs_normed, gt_discrete_normed).sum(1).sum(1).sum(1) *
+                           torch.from_numpy(gd_count).float().to(self.device)).mean(0) * self.args.tv
+
                 epoch_ot_loss.update(ot_loss.item(), N)
                 epoch_ot_obj_value.update(ot_obj_value.item(), N)
                 epoch_wd.update(wd, N)
                 epoch_count_loss.update(count_loss.item(), N)
                 epoch_tv_loss.update(tv_loss.item(), N)
-                   
+
                 # Compute ranking loss.
-                rank_loss = self.rankloss(outputs_UL)*self.args.rl
+                rank_loss = self.rankloss(outputs_UL) * self.args.rl
                 epoch_rank_loss.update(rank_loss.item(), N)
-                
+
                 # Compute multi level consistancy loss
                 consistency_loss = args.consistency * self.multiconloss(outputs_UL)
                 epoch_consistensy_loss.update(consistency_loss.item(), N)
-                
-                
+
                 # Compute consistency count
-                Con_cls_UL = (CLS_UL[0] + CLS_UL[1] + CLS_UL[2])/3
+                Con_cls_UL = (CLS_UL[0] + CLS_UL[1] + CLS_UL[2]) / 3
                 Con_cls_L = torch.from_numpy(gd_count).float().to(self.device)
-                
-                count_loss_l = self.mae(torch.stack((CLS_L[0],CLS_L[1],CLS_L[2])), torch.stack((Con_cls_L, Con_cls_L, Con_cls_L)))
-                count_loss_ul = self.mae(torch.stack((CLS_UL[0],CLS_UL[1],CLS_UL[2])), torch.stack((Con_cls_UL, Con_cls_UL, Con_cls_UL)))
+
+                count_loss_l = self.mae(torch.stack((CLS_L[0], CLS_L[1], CLS_L[2])),
+                                        torch.stack((Con_cls_L, Con_cls_L, Con_cls_L)))
+                count_loss_ul = self.mae(torch.stack((CLS_UL[0], CLS_UL[1], CLS_UL[2])),
+                                         torch.stack((Con_cls_UL, Con_cls_UL, Con_cls_UL)))
                 epoch_count_consistency_l.update(count_loss_l.item(), N)
                 epoch_count_consistency_ul.update(count_loss_ul.item(), N)
-                
-                
+
                 loss = count_loss + ot_loss + tv_loss + rank_loss + count_loss_l + count_loss_ul + consistency_loss
-                
-  
+
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
                 pred_count = (torch.sum(outputs_L.view(N, -1),
-                              dim=1).detach().cpu().numpy())
-                              
+                                        dim=1).detach().cpu().numpy())
+
                 pred_err = pred_count - gd_count
                 epoch_loss.update(loss.item(), N)
                 epoch_mse.update(np.mean(pred_err * pred_err), N)
                 epoch_mae.update(np.mean(abs(pred_err)), N)
-        
-        
+
         self.logger.info(
             "Epoch {} Train, Loss: {:.2f}, Count Loss: {:.2f}, OT Loss: {:.2e}, TV Loss: {:.2e}, Rank Loss: {:.2f},"
-                "Consistensy Loss: {:.2f},  MSE: {:.2f}, MAE: {:.2f},LC Loss: {:.2f}, ULC Loss: {:.2f}, Cost {:.1f} sec".format(
-                self.epoch, epoch_loss.get_avg(), epoch_count_loss.get_avg(), epoch_ot_loss.get_avg(), epoch_tv_loss.get_avg(), epoch_rank_loss.get_avg(),
-                epoch_consistensy_loss.get_avg(), np.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg(), epoch_count_consistency_l.get_avg(), 
+            "Consistensy Loss: {:.2f},  MSE: {:.2f}, MAE: {:.2f},LC Loss: {:.2f}, ULC Loss: {:.2f}, Cost {:.1f} sec".format(
+                self.epoch, epoch_loss.get_avg(), epoch_count_loss.get_avg(), epoch_ot_loss.get_avg(),
+                epoch_tv_loss.get_avg(), epoch_rank_loss.get_avg(),
+                epoch_consistensy_loss.get_avg(), np.sqrt(epoch_mse.get_avg()), epoch_mae.get_avg(),
+                epoch_count_consistency_l.get_avg(),
                 epoch_count_consistency_ul.get_avg(), time.time() - epoch_start))
-                
-         
-                
+
         model_state_dic = self.model.state_dict()
         save_path = os.path.join(self.save_dir, "{}_ckpt.tar".format(self.epoch))
-        
+
         torch.save({"epoch": self.epoch, "optimizer_state_dict": self.optimizer.state_dict(),
-                "model_state_dict": model_state_dic}, save_path)
+                    "model_state_dict": model_state_dic}, save_path)
         self.save_list.append(save_path)
 
     def val_epoch(self):
@@ -322,12 +330,12 @@ class Trainer(object):
                 nz, bz = crop_imgs.size(0), args.batch_size
                 for i in range(0, nz, bz):
                     gs, gt = i, min(nz, i + bz)
-                    
+
                     crop_pred, _ = self.model(crop_imgs[gs:gt])
                     crop_pred = crop_pred[0]
                     _, _, h1, w1 = crop_pred.size()
                     crop_pred = (F.interpolate(crop_pred, size=(h1 * 4, w1 * 4),
-                            mode="bilinear", align_corners=True) / 16 )
+                                               mode="bilinear", align_corners=True) / 16)
 
                     crop_preds.append(crop_pred)
                 crop_preds = torch.cat(crop_preds, dim=0)
@@ -352,28 +360,26 @@ class Trainer(object):
         mae = np.mean(np.abs(epoch_res))
 
         self.logger.info("Epoch {} Val, MSE: {:.2f}, MAE: {:.2f}, Cost {:.1f} sec".format(
-                self.epoch, mse, mae, time.time() - epoch_start ))
-
+            self.epoch, mse, mae, time.time() - epoch_start))
 
         model_state_dic = self.model.state_dict()
-        print("Comaprison", mae,  self.best_mae)
+        print("Comaprison", mae, self.best_mae)
         if mae < self.best_mae:
             self.best_mse = mse
             self.best_mae = mae
             self.logger.info(
                 "save best mse {:.2f} mae {:.2f} model epoch {}".format(
                     self.best_mse, self.best_mae, self.epoch))
-                    
+
             print("Saving best model at {} epoch".format(self.epoch))
             model_path = os.path.join(
                 self.save_dir, "best_model_mae-{:.2f}_epoch-{}.pth".format(
                     self.best_mae, self.epoch))
-                    
+
             torch.save(model_state_dic, model_path)
 
 
 if __name__ == "__main__":
-    torch.backends.cudnn.benchmark = True
     trainer = Trainer(args)
     trainer.setup()
     trainer.train()
