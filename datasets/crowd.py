@@ -3,7 +3,8 @@ import torch.utils.data as data
 import os
 from glob import glob
 import torch
-import torchvision.transforms.functional as F
+import torchvision.transforms.functional as TF
+import torch.nn.functional as F
 from torchvision import transforms
 import random
 import numpy as np
@@ -73,8 +74,8 @@ class Base(data.Dataset):
         assert st_size >= self.c_size
         assert len(keypoints) >= 0
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
-        img = F.crop(img, i, j, h, w)
-        gauss_im = F.crop(img, i, j, h, w)
+        img = TF.crop(img, i, j, h, w)
+        gauss_im = TF.crop(img, i, j, h, w)
         if len(keypoints) > 0:
             keypoints = keypoints - [j, i]
             idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] <= w) * \
@@ -91,14 +92,14 @@ class Base(data.Dataset):
 
         if len(keypoints) > 0:
             if random.random() > 0.5:
-                img = F.hflip(img)
-                gauss_im = F.hflip(gauss_im)
+                img = TF.hflip(img)
+                gauss_im = TF.hflip(gauss_im)
                 gt_discrete = np.fliplr(gt_discrete)
                 keypoints[:, 0] = w - keypoints[:, 0]
         else:
             if random.random() > 0.5:
-                img = F.hflip(img)
-                gauss_im = F.hflip(gauss_im)
+                img = TF.hflip(img)
+                gauss_im = TF.hflip(gauss_im)
                 gt_discrete = np.fliplr(gt_discrete)
         gt_discrete = np.expand_dims(gt_discrete, 0)
 
@@ -167,8 +168,8 @@ class Crowd_TC(Base):
             crop_w = self.c_size
             i = max((ht - crop_h) // 2, 0)
             j = max((wd - crop_w) // 2, 0)
-            img = F.crop(img, i, j, crop_h, crop_w)
-            gauss_im = F.crop(gauss_im, i, j, crop_h, crop_w)
+            img = TF.crop(img, i, j, crop_h, crop_w)
+            gauss_im = TF.crop(gauss_im, i, j, crop_h, crop_w)
 
             # 3) Shift keypoints into cropped patch and keep only inside
             if len(keypoints) > 0:
@@ -201,8 +202,8 @@ class Crowd_TC(Base):
         assert len(keypoints) >= 0
         # Then randomly crop 256x256 patches for training
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
-        img = F.crop(img, i, j, h, w)
-        gauss_im = F.crop(gauss_im, i, j, h, w)
+        img = TF.crop(img, i, j, h, w)
+        gauss_im = TF.crop(gauss_im, i, j, h, w)
         if len(keypoints) > 0:
             keypoints = keypoints - [j, i]
             idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] <= w) * \
@@ -219,14 +220,14 @@ class Crowd_TC(Base):
 
         if len(keypoints) > 0:
             if random.random() > 0.5:
-                img = F.hflip(img)
-                gauss_im = F.hflip(gauss_im)
+                img = TF.hflip(img)
+                gauss_im = TF.hflip(gauss_im)
                 gt_discrete = np.fliplr(gt_discrete)
                 keypoints[:, 0] = w - keypoints[:, 0] - 1
         else:
             if random.random() > 0.5:
-                img = F.hflip(img)
-                gauss_im = F.hflip(gauss_im)
+                img = TF.hflip(img)
+                gauss_im = TF.hflip(gauss_im)
                 gt_discrete = np.fliplr(gt_discrete)
         gt_discrete = np.expand_dims(gt_discrete, 0)
         # import pdb;pdb.set_trace()
@@ -258,10 +259,10 @@ class Base_UL(data.Dataset):
         st_size = 1.0 * min(wd, ht)
         assert st_size >= self.c_size
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
-        img = F.crop(img, i, j, h, w)
+        img = TF.crop(img, i, j, h, w)
 
         if random.random() > 0.5:
-            img = F.hflip(img)
+            img = TF.hflip(img)
 
         return self.trans(img)
 
@@ -301,9 +302,9 @@ class Crowd_UL_TC(Base_UL):
         assert st_size >= self.c_size, print(wd, ht)
 
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
-        img = F.crop(img, i, j, h, w)
+        img = TF.crop(img, i, j, h, w)
         if random.random() > 0.5:
-            img = F.hflip(img)
+            img = TF.hflip(img)
 
         return self.trans(img), 1
 
