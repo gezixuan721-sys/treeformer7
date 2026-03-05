@@ -111,7 +111,7 @@ class Crowd_TC(Base):
     def __init__(self, root_path, crop_size, downsample_ratio=8, method='train'):
         super().__init__(root_path, crop_size, downsample_ratio)
         self.method = method
-        if method not in ['train', 'val']:
+        if method not in ['train', 'val', 'test']:
             raise Exception("not implement")
 
         self.im_list = sorted(glob(os.path.join(self.root_path, 'images', '*.jpg')))
