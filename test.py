@@ -15,7 +15,7 @@ parser.add_argument('--crop-size', type=int, default=256, help='the crop size of
 parser.add_argument('--model-path', type=str,
                     default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/TreeFormer-main/best_model.pth',
                     help='saved model path')
-parser.add_argument('--data-path', type=str, default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/gaofenerhao',
+parser.add_argument('--data-path', type=str, default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/Data',
                     help='dataset path')
 parser.add_argument('--dataset', type=str, default='TC')
 
