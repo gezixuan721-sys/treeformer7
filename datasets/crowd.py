@@ -142,72 +142,48 @@ class Crowd_TC(Base):
         if self.method == 'train':
             return self.train_transform(img, keypoints, gauss_im)
         elif self.method in ['val', 'test']:
-            # Validation / test: unify with training preprocessing
-            # 1) Resize image and gauss_im to 512x512 with Bicubic
             wd, ht = img.size
-            target_size = 512
-            rr_w = 1.0 * target_size / wd
-            rr_h = 1.0 * target_size / ht
-            img = img.resize((target_size, target_size), Image.BICUBIC)
-            gauss_im = F.interpolate(
-                gauss_im.unsqueeze(0).unsqueeze(0),
-                size=(target_size, target_size),
-                mode='bicubic',
-                align_corners=False
-            ).squeeze(0).squeeze(0)
-
-            keypoints = keypoints.astype(np.float32)
-            if len(keypoints) > 0:
-                keypoints[:, 0] = keypoints[:, 0] * rr_w
-                keypoints[:, 1] = keypoints[:, 1] * rr_h
-
-            wd, ht = target_size, target_size
-
-            # 2) Center crop to 256x256 for deterministic eval
-            crop_h = self.c_size
-            crop_w = self.c_size
-            i = max((ht - crop_h) // 2, 0)
-            j = max((wd - crop_w) // 2, 0)
-            img = TF.crop(img, i, j, crop_h, crop_w)
-            gauss_im = TF.crop(gauss_im, i, j, crop_h, crop_w)
-
-            # 3) Shift keypoints into cropped patch and keep only inside
-            if len(keypoints) > 0:
-                keypoints = keypoints - [j, i]
-                idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] <= crop_w) * \
-                           (keypoints[:, 1] >= 0) * (keypoints[:, 1] <= crop_h)
-                keypoints = keypoints[idx_mask]
-
+            st_size = 1.0 * min(wd, ht)
+            if st_size < self.c_size:
+                rr = 1.0 * self.c_size / st_size
+                wd = round(wd * rr)
+                ht = round(ht * rr)
+                st_size = 1.0 * min(wd, ht)
+                img = img.resize((wd, ht), Image.BICUBIC)
             img = self.trans(img)
-            # Return image tensor, updated count, name, and cropped gauss_im
+
             return img, len(keypoints), name, gauss_im
 
     def train_transform(self, img, keypoints, gauss_im):
         wd, ht = img.size
-        st_size = 1.0 * min(wd, ht)
-        # First resize image and gauss_im to 512x512 using Bicubic interpolation
-        target_size = 512
-        rr_w = 1.0 * target_size / wd
-        rr_h = 1.0 * target_size / ht
-        img = img.resize((target_size, target_size), Image.BICUBIC)
-        gauss_im = F.interpolate(gauss_im.unsqueeze(0).unsqueeze(0), size=(target_size, target_size), mode='bicubic',
-                                 align_corners=False).squeeze(0).squeeze(0)
-        keypoints = keypoints.astype(np.float32)
-        if len(keypoints) > 0:
-            keypoints[:, 0] = keypoints[:, 0] * rr_w
-            keypoints[:, 1] = keypoints[:, 1] * rr_h
-        wd, ht = target_size, target_size
-        st_size = 1.0 * min(wd, ht)
-        assert st_size >= self.c_size, print(wd, ht)
-        assert len(keypoints) >= 0
-        # Then randomly crop 256x256 patches for training
+        # Process raw images directly without forced 512 upscaling.
+        # Ensure image is at least c_size x c_size for random cropping.
+        if wd < self.c_size or ht < self.c_size:
+            target_size = self.c_size
+            rr_w = 1.0 * target_size / wd if wd < self.c_size else 1.0
+            rr_h = 1.0 * target_size / ht if ht < self.c_size else 1.0
+
+            new_w = int(wd * rr_w)
+            new_h = int(ht * rr_h)
+
+            img = img.resize((new_w, new_h), Image.BICUBIC)
+            gauss_im = F.interpolate(gauss_im.unsqueeze(0).unsqueeze(0), size=(new_h, new_w), mode='bicubic',
+                                     align_corners=False).squeeze(0).squeeze(0)
+            keypoints = keypoints.astype(np.float32)
+            if len(keypoints) > 0:
+                keypoints[:, 0] = keypoints[:, 0] * rr_w
+                keypoints[:, 1] = keypoints[:, 1] * rr_h
+            wd, ht = new_w, new_h
+
+        # Then randomly crop patches for training
         i, j, h, w = random_crop(ht, wd, self.c_size, self.c_size)
         img = TF.crop(img, i, j, h, w)
         gauss_im = TF.crop(gauss_im, i, j, h, w)
+
         if len(keypoints) > 0:
             keypoints = keypoints - [j, i]
-            idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] <= w) * \
-                       (keypoints[:, 1] >= 0) * (keypoints[:, 1] <= h)
+            idx_mask = (keypoints[:, 0] >= 0) * (keypoints[:, 0] < w) * \
+                       (keypoints[:, 1] >= 0) * (keypoints[:, 1] < h)
             keypoints = keypoints[idx_mask]
         else:
             keypoints = np.empty([0, 2])
