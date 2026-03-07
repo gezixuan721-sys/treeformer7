@@ -141,7 +141,7 @@ class Crowd_TC(Base):
 
         if self.method == 'train':
             return self.train_transform(img, keypoints, gauss_im)
-        elif self.method == 'val':
+        elif self.method in ['val', 'test']:
             # Validation / test: unify with training preprocessing
             # 1) Resize image and gauss_im to 512x512 with Bicubic
             wd, ht = img.size
