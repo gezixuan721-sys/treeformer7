@@ -71,4 +71,7 @@ class SBA(nn.Module):
 
         # 融合输出
         out = self.conv(torch.cat([H_feature, L_feature], dim=1))
-        return out
+
+        # 残差直连补偿：使得 epoch 0 时等价于原作者的加法融合
+        # 梯度可以直接穿透，彻底消除随机初始化带来的性能爬坡滞后
+        return H_original + L_original + out

@@ -37,4 +37,7 @@ class MFM(nn.Module):
         attn = self.softmax(attn.view(B, self.height, C, 1, 1))
 
         out = torch.sum(in_feats * attn, dim=1)
-        return out
+        # 残差直连补偿：原作者是纯加法直接传梯度
+        # MFM 的 softmax 必然会让融合结果在初始时缩水 (如 0.5 + 0.5)
+        # 直接叠加上原特征的加和，保证第一轮拥有完全无损的 1.0 倍梯度通路
+        return in_feats1 + in_feats2 + out
