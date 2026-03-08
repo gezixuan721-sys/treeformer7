@@ -13,9 +13,9 @@ parser.add_argument('--device', default='0', help='assign device')
 parser.add_argument('--batch-size', type=int, default=8, help='train batch size')
 parser.add_argument('--crop-size', type=int, default=256, help='the crop size of the train image')
 parser.add_argument('--model-path', type=str,
-                    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/TreeFormer-main/best_model.pth',
+                    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/TreeFormer-main/ckpts/best_model.pth',
                     help='saved model path')
-parser.add_argument('--data-path', type=str, default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/Data',
+parser.add_argument('--data-path', type=str, default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/londonData',
                     help='dataset path')
 parser.add_argument('--dataset', type=str, default='TC')
 
@@ -28,11 +28,10 @@ def test(args, isSave=True):
     crop_size = args.crop_size
     data_path = args.data_path
 
-    dataset = crowd.Crowd_TC(os.path.join(data_path, 'test_data'), crop_size, 1, method='test')
+    dataset = crowd.Crowd_TC(os.path.join(data_path, 'test_data'), crop_size, 1, method='val')
     dataloader = torch.utils.data.DataLoader(dataset, 1, shuffle=False, num_workers=1, pin_memory=True)
 
-    model = TCN.pvt_treeformer(pretrained=False, use_sba=args.use_sba, use_mfm=args.use_mfm,
-                               use_adapter=args.use_adapter)
+    model = TCN.pvt_treeformer(pretrained=False)
     model.to(device)
     model.load_state_dict(torch.load(model_path, device))
     model.eval()
@@ -44,15 +43,49 @@ def test(args, isSave=True):
     for inputs, count, name, imgauss in dataloader:
         with torch.no_grad():
             inputs = inputs.to(device)
+            crop_imgs, crop_masks = [], []
             b, c, h, w = inputs.size()
+            rh, rw = args.crop_size, args.crop_size
 
-            # Since the image is already 256x256, directly predict
-            crop_pred, _ = model(inputs)
-            crop_pred = crop_pred[0]
+            for i in range(0, h, rh):
+                gis, gie = max(min(h - rh, i), 0), min(h, i + rh)
 
-            # Interpolate to original size
-            _, _, h1, w1 = crop_pred.size()
-            outputs = F.interpolate(crop_pred, size=(h1 * 4, w1 * 4), mode='bilinear', align_corners=True) / 16
+                for j in range(0, w, rw):
+                    gjs, gje = max(min(w - rw, j), 0), min(w, j + rw)
+                    crop_imgs.append(inputs[:, :, gis:gie, gjs:gje])
+                    mask = torch.zeros([b, 1, h, w]).to(device)
+                    mask[:, :, gis:gie, gjs:gje].fill_(1.0)
+                    crop_masks.append(mask)
+            crop_imgs, crop_masks = map(lambda x: torch.cat(x, dim=0), (crop_imgs, crop_masks))
+
+            crop_preds = []
+            nz, bz = crop_imgs.size(0), args.batch_size
+            for i in range(0, nz, bz):
+                gs, gt = i, min(nz, i + bz)
+                crop_pred, _ = model(crop_imgs[gs:gt])
+                crop_pred = crop_pred[0]
+
+                _, _, h1, w1 = crop_pred.size()
+                crop_pred = F.interpolate(crop_pred, size=(h1 * 4, w1 * 4), mode='bilinear', align_corners=True) / 16
+                crop_preds.append(crop_pred)
+            crop_preds = torch.cat(crop_preds, dim=0)
+            # import pdb;pdb.set_trace()
+
+            # splice them to the original size
+            idx = 0
+            pred_map = torch.zeros([b, 1, h, w]).to(device)
+            for i in range(0, h, rh):
+                gis, gie = max(min(h - rh, i), 0), min(h, i + rh)
+                for j in range(0, w, rw):
+                    gjs, gje = max(min(w - rw, j), 0), min(w, j + rw)
+                    pred_map[:, :, gis:gie, gjs:gje] += crop_preds[idx]
+                    idx += 1
+            # for the overlapping area, compute average value
+            mask = crop_masks.sum(dim=0).unsqueeze(0)
+            outputs = pred_map / mask
+
+            outputs = F.interpolate(outputs, size=(h, w), mode='bilinear', align_corners=True) / 4
+            outputs = pred_map / mask
 
             img_err = count[0].item() - torch.sum(outputs).item()
             R2_gt.append(count[0].item())
@@ -84,9 +117,5 @@ def test(args, isSave=True):
 
 
 if __name__ == '__main__':
-    parser.add_argument('--use-sba', action='store_true', help='use sba module')
-    parser.add_argument('--use-mfm', action='store_true', help='use mfm module')
-    parser.add_argument('--use-adapter', action='store_true', help='use adapter module')
     args = parser.parse_args()
     test(args, isSave=True)
-
