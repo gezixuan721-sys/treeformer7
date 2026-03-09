@@ -49,6 +49,10 @@ class SBA(nn.Module):
         self.Sigmoid = nn.Sigmoid()
 
     def forward(self, H_feature, L_feature):
+        # 保存原始特征用于残差补偿
+        H_orig = H_feature
+        L_orig = L_feature
+
         # 通道调整
         L_feature = self.fc1(L_feature)
         H_feature = self.fc2(H_feature)
@@ -74,4 +78,4 @@ class SBA(nn.Module):
 
         # 残差直连补偿：使得 epoch 0 时等价于原作者的加法融合
         # 梯度可以直接穿透，彻底消除随机初始化带来的性能爬坡滞后
-        return H_original + L_original + out
+        return H_orig + L_orig + out

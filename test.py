@@ -13,11 +13,14 @@ parser.add_argument('--device', default='0', help='assign device')
 parser.add_argument('--batch-size', type=int, default=8, help='train batch size')
 parser.add_argument('--crop-size', type=int, default=256, help='the crop size of the train image')
 parser.add_argument('--model-path', type=str,
-                    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/TreeFormer-main/ckpts/best_model.pth',
+                    default='/scratch/users/k2254235/ckpts/SEMI/Treeformer/best_model_mae-21.49_epoch-1759.pth',
                     help='saved model path')
-parser.add_argument('--data-path', type=str, default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/londonData',
+parser.add_argument('--data-path', type=str, default='/users/k2254235/Lab/TCT/Dataset/London_103050/',
                     help='dataset path')
 parser.add_argument('--dataset', type=str, default='TC')
+parser.add_argument('--use-sba', action='store_true', help='Use SBA module')
+parser.add_argument('--use-mfm', action='store_true', help='Use MFM module')
+parser.add_argument('--use-adapter', action='store_true', help='Use Adapter module')
 
 
 def test(args, isSave=True):
@@ -31,7 +34,8 @@ def test(args, isSave=True):
     dataset = crowd.Crowd_TC(os.path.join(data_path, 'test_data'), crop_size, 1, method='val')
     dataloader = torch.utils.data.DataLoader(dataset, 1, shuffle=False, num_workers=1, pin_memory=True)
 
-    model = TCN.pvt_treeformer(pretrained=False)
+    model = TCN.pvt_treeformer(pretrained=False, use_sba=args.use_sba, use_mfm=args.use_mfm,
+                               use_adapter=args.use_adapter)
     model.to(device)
     model.load_state_dict(torch.load(model_path, device))
     model.eval()
@@ -84,9 +88,6 @@ def test(args, isSave=True):
             mask = crop_masks.sum(dim=0).unsqueeze(0)
             outputs = pred_map / mask
 
-            outputs = F.interpolate(outputs, size=(h, w), mode='bilinear', align_corners=True) / 4
-            outputs = pred_map / mask
-
             img_err = count[0].item() - torch.sum(outputs).item()
             R2_gt.append(count[0].item())
             R2_es.append(torch.sum(outputs).item())
@@ -119,3 +120,4 @@ def test(args, isSave=True):
 if __name__ == '__main__':
     args = parser.parse_args()
     test(args, isSave=True)
+

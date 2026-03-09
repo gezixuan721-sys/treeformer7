@@ -229,6 +229,13 @@ class Regression(nn.Module):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
 
+        # 强制残差零初始化：覆盖全局初始化，让 SBA 和 MFM 刚开始时严格等效于 identity
+        for m in self.modules():
+            if isinstance(m, SBA):
+                nn.init.constant_(m.conv[-1].weight, 0)
+            elif isinstance(m, MFM):
+                nn.init.constant_(m.mlp[-1].weight, 0)
+
 
 class Mlp(nn.Module):
     def __init__(self, in_features, hidden_features=None, out_features=None, act_layer=nn.GELU, drop=0.):

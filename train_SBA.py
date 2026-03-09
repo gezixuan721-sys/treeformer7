@@ -38,7 +38,7 @@ def seed_everything(seed=1234):
 parser = argparse.ArgumentParser(description='Train (SBA version + seed)')
 parser.add_argument(
     '--data-dir',
-    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/gaofenerhao',
+    default='/media/hznu-303/sdc/gzt/my_project/TreeFormer/londonData',
     help='data path'
 )
 
